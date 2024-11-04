@@ -73,6 +73,20 @@ curl -X POST "http://127.0.0.1:8000/segment" -H "Content-Type: application/json"
 Install the required packages using pip:
 
 ```bash
+conda create -n env python=3.8
+conda activate env
+```
+
+```bash
+conda install -c conda-forge gdal
+```
+
+```bash
+pip install torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cu121
+```
+
+
+```bash
 pip install -r requirements.txt
 ```
 
