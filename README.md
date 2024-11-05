@@ -94,7 +94,7 @@ pip install -r requirements.txt
 pip install "mmsegmentation>=1.0.0"
 ```
 
-Download weights from [drive](https://drive.google.com/file/d/1z8lNsyYRongWcH1BMVf4nPVDZMnU2HRE/view?usp=sharing) and place them in the appropriate configuration directory.
+Download weights from [drive](https://drive.google.com/file/d/1NkMV5pGZ6yasBzVr3guKCvm1KjAbmdvd/view?usp=drive_link) and place them in the appropriate configuration directory.
 
 ### Running the API
 
