@@ -1,6 +1,6 @@
 # Oil Spill Detection API
 
-This API allows users to perform segmentation on satellite imagery for detecting oil spills using deep learning models. It processes multi-channel TIFF images, crops them into smaller fragments, applies predictions, and combines the results into a single output.
+This API allows users to perform segmentation on satellite imagery for detecting oil spills using deep learning models. It processes one-channel TIFF images, crops them into smaller fragments, applies predictions, and combines the results into a single output.
 
 ## Endpoints
 
