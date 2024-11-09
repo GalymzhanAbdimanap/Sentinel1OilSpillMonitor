@@ -10,7 +10,7 @@ import glob
 import shutil
 from fastapi import FastAPI
 import uvicorn
-from osgeo import gdal, osr
+from osgeo import gdal, osr, ogr
 from rasterio.windows import Window
 
 app = FastAPI()
@@ -66,8 +66,8 @@ def apply_sliding_window(image_path, window_size, stride_x, stride_y, output_fol
 
 def predict(crop_images_path, out_predicted_folder):
 
-    config_path = 'configs/mask2former_swin-t_8xb2-90k_cityscapes-512x1024.py'
-    checkpoint_path = 'configs/iter_40000.pth'
+    config_path = 'configs/mask2former_swin-t_8xb2-90k_cityscapes-512x1024_water.py'
+    checkpoint_path = 'configs/iter_90000.pth'
 
     model = init_model(config_path, checkpoint_path)
 
@@ -212,6 +212,67 @@ def tiff_to_xyz(filepath):
 
     return xyz
 
+def raster_to_vector(input_raster, output_geojson):
+    """
+    Преобразует одноканальный растровый файл в векторный формат GeoJSON с полигонализацией классов.
+    
+    Parameters:
+    input_raster (str): Путь к входному растровому файлу (GeoTIFF).
+    output_geojson (str): Путь к выходному векторному файлу (GeoJSON).
+    """
+    # Открываем растровый файл
+    src_ds = gdal.Open(input_raster)
+    if src_ds is None:
+        raise FileNotFoundError(f"Не удалось открыть растровый файл: {input_raster}")
+    
+    band = src_ds.GetRasterBand(1)  # Предполагается, что у вас один канал
+    
+    # Создаём векторный файл GeoJSON
+    driver = ogr.GetDriverByName("GeoJSON")
+    out_ds = driver.CreateDataSource(output_geojson)
+    if out_ds is None:
+        raise RuntimeError(f"Не удалось создать векторный файл: {output_geojson}")
+    
+    # Создаём слой для полигонов
+    out_layer = out_ds.CreateLayer("polygonized", geom_type=ogr.wkbPolygon)
+    
+    # Добавляем поле для значений класса
+    field = ogr.FieldDefn("class", ogr.OFTInteger)
+    out_layer.CreateField(field)
+    
+    # Полигонализация растра
+    gdal.Polygonize(band, None, out_layer, 0, [], callback=None)
+    
+    # Закрываем файлы
+    src_ds = None
+    out_ds = None
+    
+    print(f"Полигональный векторный файл создан: {output_geojson}")
+    return output_geojson
+
+from datetime import datetime
+import re
+
+def extract_timestamp_from_filename(filename):
+    """
+    Извлекает дату и время из названия файла в формате S1A_YYYYMMDDTHHMMSS_1km.tif и преобразует в объект datetime.
+    
+    Parameters:
+    filename (str): Название файла.
+    
+    Returns:
+    datetime: Объект datetime с извлечённой датой и временем.
+    """
+    # Используем регулярное выражение для извлечения части с датой и временем
+    match = re.search(r'_(\d{8}T\d{6})_', filename)
+    if match:
+        timestamp_str = match.group(1)  # Извлекаем подстроку с датой и временем, например, "20231231T143759"
+        # Преобразуем строку в объект datetime
+        timestamp = datetime.strptime(timestamp_str, "%Y%m%dT%H%M%S")
+        return timestamp.strftime("%Y-%m-%d %H:%M:%S")
+    else:
+        raise ValueError("Не удалось найти дату и время в названии файла")
+
 def delete_files_and_folders(folder_path, file_extensions=None):
     """
     Удаляет все файлы и подпапки в указанной папке. 
@@ -289,6 +350,8 @@ def process(src_image_name, SRC_IMAGES_FOLDER = 'src_images', CROP_IMAGES_FOLDER
     # Rasterization to 1 km.
     output_tif_path_1km = os.path.join(PREDICTED_IMAGES_FOLDER, f'{os.path.basename(result_src_image)[:-4]}_1km.tif')
     result_rasterization_1km = aggregate_to_km_resolution(result_tif_file, output_tif_path_1km)
+    geojson_1km = raster_to_vector(result_rasterization_1km, f"{result_rasterization_1km[:-4]}.geojson")
+    time_1km = extract_timestamp_from_filename(result_rasterization_1km)
     xyz = tiff_to_xyz(result_rasterization_1km)
     result_xyz  = list([list(x) for x in xyz])
 
@@ -299,7 +362,7 @@ def process(src_image_name, SRC_IMAGES_FOLDER = 'src_images', CROP_IMAGES_FOLDER
     delete_files_and_folders(PREDICTED_IMAGES_FOLDER, '.npy')
 
 
-    return {'xyz': result_xyz}
+    return {'xyz': result_xyz, 'time':time_1km, 'geojson': geojson_1km}
 
 @app.post("/segment")
 def read_root(file_name: str):
