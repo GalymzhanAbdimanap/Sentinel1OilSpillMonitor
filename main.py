@@ -16,6 +16,9 @@ from rasterio.windows import Window
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 app = FastAPI()
+config_path = 'configs/mask2former_swin-t_8xb2-90k_cityscapes-512x1024_water.py'
+checkpoint_path = 'configs/iter_90000.pth'
+model = init_model(config_path, checkpoint_path, device='cpu')
 
 def tif_to_png(input_file, output_png_file):
 
@@ -68,10 +71,7 @@ def apply_sliding_window(image_path, window_size, stride_x, stride_y, output_fol
 
 def predict(crop_images_path, out_predicted_folder, predicted_visual_folder):
 
-    config_path = 'configs/mask2former_swin-t_8xb2-90k_cityscapes-512x1024_water.py'
-    checkpoint_path = 'configs/iter_90000.pth'
-
-    model = init_model(config_path, checkpoint_path)
+    
 
     filenames = glob.glob(f'{crop_images_path}/*.png')
     print("Идет распознавание...")
