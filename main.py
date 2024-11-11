@@ -13,6 +13,8 @@ import uvicorn
 from osgeo import gdal, osr, ogr
 from rasterio.windows import Window
 
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+
 app = FastAPI()
 
 def tif_to_png(input_file, output_png_file):
@@ -64,7 +66,7 @@ def apply_sliding_window(image_path, window_size, stride_x, stride_y, output_fol
     
     return output_folder
 
-def predict(crop_images_path, out_predicted_folder):
+def predict(crop_images_path, out_predicted_folder, predicted_visual_folder):
 
     config_path = 'configs/mask2former_swin-t_8xb2-90k_cityscapes-512x1024_water.py'
     checkpoint_path = 'configs/iter_90000.pth'
@@ -72,16 +74,49 @@ def predict(crop_images_path, out_predicted_folder):
     model = init_model(config_path, checkpoint_path)
 
     filenames = glob.glob(f'{crop_images_path}/*.png')
+    print("Идет распознавание...")
     for filename in filenames:
-        print(filename)
+        # print(filename)
         img_path = filename
         result = inference_model(model, img_path)
         np.save(f'{out_predicted_folder}/{os.path.basename(filename)[:-3]}npy', result.pred_sem_seg.data.cpu().numpy(), allow_pickle=True, fix_imports=True)
-        # vis_iamge = show_result_pyplot(model, img_path, result,  show=False,  out_file=f'data/landsat_test_images/images_320_320/{dir}/predictions_{model_name}/{os.path.basename(filename)}', save_dir='./') #draw_pred=False, draw_gt=False,  
+        vis_iamge = show_result_pyplot(model, img_path, result,  show=False, with_labels=False, out_file=f'{predicted_visual_folder}/{os.path.basename(filename)}', save_dir='./') #draw_pred=False, draw_gt=False,  
 
     return out_predicted_folder
 
+def combine_sliding_window_images(input_folder, output_path, src_folder):
+    # Получаем список всех файлов в папке input_folder
+    image_files = os.listdir(input_folder)
+    src_img = cv2.imread(f'{src_folder}/{os.path.basename(output_path)[:-4]}.png')
+    H, W = src_img.shape[:2]
+    # Создаем пустое изображение, куда будем объединять другие изображения
+    combined_image  = np.zeros((H, W, 3), dtype=np.uint8)
+    
+    # Проходимся по всем файлам изображений
+    for image_file in image_files:
+        # Проверяем, что файл - изображение
+        if image_file.endswith('.png'):
+            # Загружаем изображение
+            img = cv2.imread(os.path.join(input_folder, image_file))
+            
+            # Извлекаем координаты x и y из названия файла
+            x, y = map(int, image_file[:-4].split('_')[-2:])
+            # img = cv2.resize(img, (1250, 650))
+            try:
+            # Добавляем изображение в общую матрицу по соответствующим координатам
+                combined_image[y:y+img.shape[0], x:x+img.shape[1]] = img
+            except:
+                if x+img.shape[1] > combined_image.shape[1] and y + img.shape[0] > combined_image.shape[0]:
+                    combined_image[combined_image.shape[0]-img.shape[0]:combined_image.shape[0], combined_image.shape[1]-img.shape[1]:combined_image.shape[1]] = img
+                    
+                elif x + img.shape[0] > combined_image.shape[1]:
+                    combined_image[y:y+img.shape[0], combined_image.shape[1]-img.shape[1]:combined_image.shape[1]] = img 
+                else:
+                    combined_image[combined_image.shape[0]-img.shape[0]:combined_image.shape[0], x:x+img.shape[1]] = img
 
+    
+    # Сохраняем объединенное изображение
+    cv2.imwrite(output_path, combined_image)
 
 def combine_mask_images(input_folder, output_path, src_folder):
     # Получаем список всех файлов в папке input_folder
@@ -273,6 +308,25 @@ def extract_timestamp_from_filename(filename):
     else:
         raise ValueError("Не удалось найти дату и время в названии файла")
 
+def create_rgb_image(single_channel_path, output_rgb_path):
+    # Открываем одноканальное изображение
+    single_channel_img = Image.open(single_channel_path)
+
+    # Создаем массив numpy из одноканального изображения
+    single_channel_array = np.array(single_channel_img)
+    # Создаем трехканальное изображение (RGB)
+    rgb_image = np.zeros((single_channel_array.shape[0], single_channel_array.shape[1], 3), dtype=np.uint8)
+    print(np.unique(single_channel_array))
+    # Присваиваем цвета каждому классу
+    rgb_image[single_channel_array == 0] = [0, 255, 255]  # Красный цвет для класса 0
+    rgb_image[single_channel_array > 0] = [255, 0, 0] 
+
+    # Создаем объект изображения с использованием Pillow
+    rgb_img = Image.fromarray(rgb_image)
+
+    # Сохраняем трехканальное изображение в формате PNG
+    rgb_img.save(output_rgb_path, format='PNG')
+
 def delete_files_and_folders(folder_path, file_extensions=None):
     """
     Удаляет все файлы и подпапки в указанной папке. 
@@ -314,7 +368,7 @@ def delete_files_and_folders(folder_path, file_extensions=None):
             except Exception as e:
                 print(f'Не удалось удалить {item_path}. Ошибка: {e}')
 
-def process(src_image_name, SRC_IMAGES_FOLDER = 'src_images', CROP_IMAGES_FOLDER = 'crop_images', PREDICTED_CROP_IMAGES_FOLDER = 'predicted_crop_images', PREDICTED_IMAGES_FOLDER = 'predicted_images'):
+def process(src_image_name, SRC_IMAGES_FOLDER = 'src_images', CROP_IMAGES_FOLDER = 'crop_images', PREDICTED_CROP_IMAGES_FOLDER = 'predicted_crop_images', PREDICTED_IMAGES_FOLDER = 'predicted_images', PREDICTED_VISUALIZATION_FOLDER='visualization_crop'):
 
     # Convert rastr 2 rgb.
     os.makedirs(SRC_IMAGES_FOLDER, exist_ok=True)
@@ -335,13 +389,16 @@ def process(src_image_name, SRC_IMAGES_FOLDER = 'src_images', CROP_IMAGES_FOLDER
     os.makedirs(PREDICTED_CROP_IMAGES_FOLDER, exist_ok=True)
     output_predicted_images_folder = os.path.join(PREDICTED_CROP_IMAGES_FOLDER, os.path.basename(result_crop_images))
     os.makedirs(output_predicted_images_folder, exist_ok=True)
-    result_predict = predict(result_crop_images, output_predicted_images_folder)
+    os.makedirs(PREDICTED_VISUALIZATION_FOLDER, exist_ok=True)
+    result_predict = predict(result_crop_images, output_predicted_images_folder, PREDICTED_VISUALIZATION_FOLDER)
 
 
     # Combine predicted images.
     os.makedirs(PREDICTED_IMAGES_FOLDER, exist_ok=True)
     output_combine_path = os.path.join(PREDICTED_IMAGES_FOLDER, f'{os.path.basename(result_src_image)[:-4]}.npy')
+    image_combine_path = os.path.join(PREDICTED_IMAGES_FOLDER, f'{os.path.basename(result_src_image)[:-4]}.png')
     result_combine = combine_mask_images(result_predict, output_combine_path, SRC_IMAGES_FOLDER)
+    image_combine = combine_sliding_window_images(PREDICTED_VISUALIZATION_FOLDER, image_combine_path, SRC_IMAGES_FOLDER)
 
     # Convert rgb 2 rast.
     output_tif_path = os.path.join(PREDICTED_IMAGES_FOLDER, f'{os.path.basename(result_src_image)[:-4]}.tif')
@@ -350,6 +407,8 @@ def process(src_image_name, SRC_IMAGES_FOLDER = 'src_images', CROP_IMAGES_FOLDER
     # Rasterization to 1 km.
     output_tif_path_1km = os.path.join(PREDICTED_IMAGES_FOLDER, f'{os.path.basename(result_src_image)[:-4]}_1km.tif')
     result_rasterization_1km = aggregate_to_km_resolution(result_tif_file, output_tif_path_1km)
+    output_rgb_path = os.path.join(PREDICTED_IMAGES_FOLDER, f'{os.path.basename(result_src_image)[:-4]}_1km.png')
+    create_rgb_image(result_rasterization_1km, output_rgb_path)
     geojson_1km = raster_to_vector(result_rasterization_1km, f"{result_rasterization_1km[:-4]}.geojson")
     time_1km = extract_timestamp_from_filename(result_rasterization_1km)
     xyz = tiff_to_xyz(result_rasterization_1km)
@@ -359,6 +418,7 @@ def process(src_image_name, SRC_IMAGES_FOLDER = 'src_images', CROP_IMAGES_FOLDER
     delete_files_and_folders(SRC_IMAGES_FOLDER)
     delete_files_and_folders(CROP_IMAGES_FOLDER)
     delete_files_and_folders(PREDICTED_CROP_IMAGES_FOLDER)
+    delete_files_and_folders(PREDICTED_VISUALIZATION_FOLDER)
     delete_files_and_folders(PREDICTED_IMAGES_FOLDER, '.npy')
 
 
