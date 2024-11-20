@@ -12,6 +12,7 @@ from fastapi import FastAPI
 import uvicorn
 from osgeo import gdal, osr, ogr
 from rasterio.windows import Window
+import requests
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
@@ -553,7 +554,12 @@ def process(src_image_name, SRC_IMAGES_FOLDER = 'src_images', CROP_IMAGES_FOLDER
 @app.post("/segment")
 def read_root(file_name: str):
     result_cl_file = process(file_name)
-    return result_cl_file
+    responce = requests.post('localhost:8000/calc_oil_spill', json=result_cl_file)
+    if response.status_code == 200:
+        msg = {'status':response.status_code, 'msg': 'Успешно'}
+    else:
+        msg = {'status':response.status_code, 'msg': 'Ошибка'}
+    return msg
 
 
 
