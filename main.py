@@ -8,7 +8,7 @@ import os
 import numpy as np
 import glob
 import shutil
-from fastapi import FastAPI
+from fastapi import FastAPI, BackgroundTasks
 import uvicorn
 from osgeo import gdal, osr, ogr
 from rasterio.windows import Window
@@ -548,18 +548,21 @@ def process(src_image_name, SRC_IMAGES_FOLDER = 'src_images', CROP_IMAGES_FOLDER
     delete_files_and_folders(PREDICTED_VISUALIZATION_FOLDER)
     delete_files_and_folders(PREDICTED_IMAGES_FOLDER, '.npy')
 
-
-    return {'xyz': result_xyz, 'time':time_1km, 'geojson': geojson_1km}
-
-@app.post("/segment")
-def read_root(file_name: str):
-    result_cl_file = process(file_name)
-    response = requests.post('http://localhost:8000/calc_oil_spill', json={"source_datetime":result_cl_file['time'], "start_hour":0, "run_hours":120, "time_step_interval":180, "xyz":result_cl_file['time']})
+    print("Отправляется запрос...")
+    response = requests.post('http://localhost:8000/calc_oil_spill', json={"source_datetime":time_1km, "start_hour":0, "run_hours":120, "time_step_interval":180, "xyz":result_xyz})
     if response.status_code == 200:
         msg = {'status':response.status_code, 'msg': 'Успешно'}
     else:
         msg = {'status':response.status_code, 'msg': 'Ошибка'}
-    return msg
+    print(msg)
+
+    
+
+@app.post("/segment")
+def read_root(background_tasks: BackgroundTasks, file_name: str):
+    result_cl_file = background_tasks.add_task(process, file_name)
+    
+    return {{"message": "Task submitted"}}
 
 
 
