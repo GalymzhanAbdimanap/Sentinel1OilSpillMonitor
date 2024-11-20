@@ -562,7 +562,7 @@ def process(src_image_name, SRC_IMAGES_FOLDER = 'src_images', CROP_IMAGES_FOLDER
 async def segment(background_tasks: BackgroundTasks, file_name: str):
     result_cl_file = background_tasks.add_task(process, file_name)
     
-    return {{"message": "Task submitted"}}
+    return {"message": "Task submitted"}
 
 
 
