@@ -554,7 +554,7 @@ def process(src_image_name, SRC_IMAGES_FOLDER = 'src_images', CROP_IMAGES_FOLDER
 @app.post("/segment")
 def read_root(file_name: str):
     result_cl_file = process(file_name)
-    responce = requests.post('localhost:8000/calc_oil_spill', json=result_cl_file)
+    responce = requests.post('http://localhost:8000/calc_oil_spill', json=result_cl_file)
     if response.status_code == 200:
         msg = {'status':response.status_code, 'msg': 'Успешно'}
     else:
