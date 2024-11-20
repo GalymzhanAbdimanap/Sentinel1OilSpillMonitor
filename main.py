@@ -554,7 +554,7 @@ def process(src_image_name, SRC_IMAGES_FOLDER = 'src_images', CROP_IMAGES_FOLDER
 @app.post("/segment")
 def read_root(file_name: str):
     result_cl_file = process(file_name)
-    responce = requests.post('http://localhost:8000/calc_oil_spill', json={"source_datetime":result_cl_file['time'], "start_hour":0, "run_hours":120, "time_step_interval":180, "xyz":result_cl_file['time']})
+    response = requests.post('http://localhost:8000/calc_oil_spill', json={"source_datetime":result_cl_file['time'], "start_hour":0, "run_hours":120, "time_step_interval":180, "xyz":result_cl_file['time']})
     if response.status_code == 200:
         msg = {'status':response.status_code, 'msg': 'Успешно'}
     else:
