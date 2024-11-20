@@ -285,6 +285,122 @@ def raster_to_vector(input_raster, output_geojson):
     print(f"Полигональный векторный файл создан: {output_geojson}")
     return output_geojson
 
+import rasterio
+
+def apply_geotransform_from_source(src_geotiff_path, input_image_path, output_geotiff_path):
+    """
+    Применяет геопривязку и систему координат из одного GeoTIFF к изображению и сохраняет его как новый GeoTIFF.
+    
+    Параметры:
+    - src_geotiff_path: путь к GeoTIFF-файлу, откуда берется геопривязка и система координат.
+    - input_image_path: путь к изображению, которое нужно привязать.
+    - output_geotiff_path: путь для сохранения нового GeoTIFF с привязкой.
+    """
+    
+    # Открываем исходный GeoTIFF для чтения геопривязки и CRS
+    with rasterio.open(src_geotiff_path) as src:
+        transform = src.transform
+        crs = src.crs
+
+    # Открываем изображение, которое нужно привязать, и считываем его данные
+    with rasterio.open(input_image_path) as img:
+        img_data = img.read(1)  # считываем данные первого канала (или другого, если есть)
+
+    # Определяем параметры для создания нового GeoTIFF
+    height, width = img_data.shape
+    dtype = img_data.dtype
+
+    # Создаем новый GeoTIFF с использованием геопривязки и CRS из исходного GeoTIFF
+    with rasterio.open(
+        output_geotiff_path,
+        'w',
+        driver='GTiff',
+        height=height,
+        width=width,
+        count=1,
+        dtype=dtype,
+        crs=crs,
+        transform=transform
+    ) as dst:
+        dst.write(img_data, 1)
+
+from osgeo import ogr, osr
+
+def convert_geojson_with_gdal(input_file, output_file, source_srs="EPSG:32639", target_srs="EPSG:4326", attribute_filter="class = 1"):
+    """
+    Конвертирует входной GeoJSON в другой GeoJSON с указанием системы координат и фильтрацией по атрибуту.
+    
+    Параметры:
+    - input_file: путь к исходному файлу GeoJSON.
+    - output_file: путь для сохранения результата в формате GeoJSON.
+    - source_srs: исходная система координат (например, "EPSG:32639").
+    - target_srs: целевая система координат (например, "EPSG:4326").
+    - attribute_filter: строка с фильтром по атрибуту (например, "class = 1").
+    """
+    
+    # Открываем входной GeoJSON для чтения
+    src_ds = ogr.Open(input_file)
+    if not src_ds:
+        raise ValueError(f"Не удалось открыть файл {input_file}")
+    
+    # Получаем первый слой данных из источника
+    src_layer = src_ds.GetLayer()
+    src_layer.SetAttributeFilter(attribute_filter)  # Устанавливаем фильтр по атрибуту
+
+    # Устанавливаем исходную и целевую системы координат
+    src_srs = osr.SpatialReference()
+    src_srs.ImportFromEPSG(int(source_srs.split(":")[1]))
+    
+    tgt_srs = osr.SpatialReference()
+    tgt_srs.ImportFromEPSG(int(target_srs.split(":")[1]))
+    
+    # Создаем трансформатор для преобразования координат
+    coord_transform = osr.CoordinateTransformation(src_srs, tgt_srs)
+
+    # Создаем выходной файл GeoJSON
+    driver = ogr.GetDriverByName("GeoJSON")
+    dst_ds = driver.CreateDataSource(output_file)
+    # if not dst_ds:
+    #     raise ValueError(f"Не удалось создать выходной файл {output_file}")
+    # with driver.CreateDataSource(output_file) as dst_ds:
+        # if not dst_ds:
+        #     raise ValueError(f"Не удалось создать выходной файл {output_file}")
+    
+    
+    # Создаем выходной слой с целевой системой координат
+    dst_layer = dst_ds.CreateLayer("layer", srs=tgt_srs, geom_type=src_layer.GetGeomType())
+    
+    # Копируем схему атрибутов
+    src_layer_def = src_layer.GetLayerDefn()
+    for i in range(src_layer_def.GetFieldCount()):
+        field_defn = src_layer_def.GetFieldDefn(i)
+        dst_layer.CreateField(field_defn)
+    
+    # Копируем и трансформируем геометрию объектов
+    dst_layer_def = dst_layer.GetLayerDefn()
+    for feature in src_layer:
+        geom = feature.GetGeometryRef()
+        geom.Transform(coord_transform)  # Преобразуем координаты
+        new_feature = ogr.Feature(dst_layer_def)
+        new_feature.SetGeometry(geom)
+        
+        # Копируем значения атрибутов
+        for i in range(dst_layer_def.GetFieldCount()):
+            new_feature.SetField(dst_layer_def.GetFieldDefn(i).GetNameRef(), feature.GetField(i))
+        
+        dst_layer.CreateFeature(new_feature)
+        new_feature = None
+    
+    # Закрываем файлы
+    src_ds = None
+    dst_ds = None
+    print(f"Файл успешно конвертирован и сохранен в {output_file}.")
+
+    return output_file
+
+
+
+
 from datetime import datetime
 import re
 
@@ -401,21 +517,31 @@ def process(src_image_name, SRC_IMAGES_FOLDER = 'src_images', CROP_IMAGES_FOLDER
     image_combine = combine_sliding_window_images(PREDICTED_VISUALIZATION_FOLDER, image_combine_path, SRC_IMAGES_FOLDER)
 
     # Convert rgb 2 rast.
-    output_tif_path = os.path.join(PREDICTED_IMAGES_FOLDER, f'{os.path.basename(result_src_image)[:-4]}.tif')
+    output_tif_path = os.path.join(PREDICTED_IMAGES_FOLDER, f'{os.path.basename(result_src_image)[:-4]}_cl.tif')
     result_tif_file = save_tif(result_combine, src_image_name, output_tif_path)
 
     # Rasterization to 1 km.
     output_tif_path_1km = os.path.join(PREDICTED_IMAGES_FOLDER, f'{os.path.basename(result_src_image)[:-4]}_1km.tif')
     result_rasterization_1km = aggregate_to_km_resolution(result_tif_file, output_tif_path_1km)
+
     output_rgb_path = os.path.join(PREDICTED_IMAGES_FOLDER, f'{os.path.basename(result_src_image)[:-4]}_1km.png')
     create_rgb_image(result_rasterization_1km, output_rgb_path)
+
     geojson_1km = raster_to_vector(result_rasterization_1km, f"{result_rasterization_1km[:-4]}.geojson")
+    src_geotiff_path = src_image_name
+    input_image_path = result_src_image
+    output_geotiff_path = os.path.join(PREDICTED_IMAGES_FOLDER, f'{os.path.basename(result_src_image)[:-4]}_img.tif')
+    apply_geotransform_from_source(src_geotiff_path, input_image_path, output_geotiff_path)
+
+    geojson = raster_to_vector(result_tif_file, f"{result_tif_file[:-4]}.geojson")
+    filtered_geojson = convert_geojson_with_gdal(geojson, f"{geojson[:-8]}_filtered.geojson")
+
     time_1km = extract_timestamp_from_filename(result_rasterization_1km)
     xyz = tiff_to_xyz(result_rasterization_1km)
     result_xyz  = list([list(x) for x in xyz])
 
     # Clear folders
-    delete_files_and_folders(SRC_IMAGES_FOLDER)
+    #delete_files_and_folders(SRC_IMAGES_FOLDER)
     delete_files_and_folders(CROP_IMAGES_FOLDER)
     delete_files_and_folders(PREDICTED_CROP_IMAGES_FOLDER)
     delete_files_and_folders(PREDICTED_VISUALIZATION_FOLDER)
