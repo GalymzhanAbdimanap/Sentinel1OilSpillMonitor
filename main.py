@@ -551,18 +551,22 @@ def process(src_image_name, SRC_IMAGES_FOLDER = 'src_images', CROP_IMAGES_FOLDER
     print("Отправляется запрос...")
     response = requests.post('http://localhost:8000/calc_oil_spill', json={"source_datetime":time_1km, "start_hour":0, "run_hours":120, "time_step_interval":180, "xyz":result_xyz})
     if response.status_code == 200:
-        msg = {'status':response.status_code, 'msg': 'Успешно'}
+        msg = {'status':response.status_code, 'msg': 'Успешно отправлен запрос на майк'}
     else:
-        msg = {'status':response.status_code, 'msg': 'Ошибка'}
+        msg = {'status':response.status_code, 'msg': 'Ошибка, майк не принял запрос'}
     print(msg)
 
     
 
 @app.post("/segment")
-async def segment(background_tasks: BackgroundTasks, file_name: str):
-    result_cl_file = background_tasks.add_task(process, file_name)
+def segment(file_name: str):
+    result_cl_file = process(file_name)
+    return result_cl_file
+
+# async def segment(background_tasks: BackgroundTasks, file_name: str):
+#     result_cl_file = background_tasks.add_task(process, file_name)
     
-    return {"message": "Task submitted"}
+#     return {"message": "Task submitted"}
 
 
 
