@@ -112,7 +112,7 @@ Replace `main` with the name of your Python file containing the FastAPI app if i
 - `crop_images/`: Temporary folder for cropped images.
 - `predicted_crop_images/`: Temporary folder for predicted cropped images.
 - `predicted_images/`: Folder for saving the final predicted TIFF images.
-- [inputs](https://drive.google.com/drive/folders/1f5zWbAFpYHugR3q6KlSecwOCUerLiLRk?usp=drive_link)
+- [inputs](https://drive.google.com/drive/folders/1z0N8RFGNJoENUhoU64vw0lrs3MkNqTHu?usp=sharing)
 
 ## License
 
