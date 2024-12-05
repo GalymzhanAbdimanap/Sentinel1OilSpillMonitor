@@ -271,6 +271,7 @@ def raster_to_vector(input_raster, output_geojson):
     
     # Создаём слой для полигонов
     srs = osr.SpatialReference()
+    srs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
     srs.ImportFromWkt(src_ds.GetProjection())
     out_layer = out_ds.CreateLayer("polygonized", geom_type=ogr.wkbPolygon, srs=srs)
     
@@ -356,6 +357,7 @@ def convert_geojson_with_gdal(input_file, output_file, source_srs="EPSG:32639", 
     
     tgt_srs = osr.SpatialReference()
     tgt_srs.ImportFromEPSG(int(target_srs.split(":")[1]))
+    tgt_srs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
     
     # Создаем трансформатор для преобразования координат
     coord_transform = osr.CoordinateTransformation(src_srs, tgt_srs)
