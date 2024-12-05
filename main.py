@@ -270,7 +270,9 @@ def raster_to_vector(input_raster, output_geojson):
         raise RuntimeError(f"Не удалось создать векторный файл: {output_geojson}")
     
     # Создаём слой для полигонов
-    out_layer = out_ds.CreateLayer("polygonized", geom_type=ogr.wkbPolygon)
+    srs = osr.SpatialReference()
+    srs.ImportFromWkt(src_ds.GetProjection())
+    out_layer = out_ds.CreateLayer("polygonized", geom_type=ogr.wkbPolygon, srs=srs)
     
     # Добавляем поле для значений класса
     field = ogr.FieldDefn("class", ogr.OFTInteger)
